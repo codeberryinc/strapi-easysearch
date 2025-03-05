@@ -1,4 +1,5 @@
 import type { Core } from '@strapi/strapi';
+import fuzzysort from 'fuzzysort';
 
 // ✅ Define expected plugin config type
 interface SearchPluginConfig {
@@ -7,7 +8,7 @@ interface SearchPluginConfig {
 
 const searchService = ({ strapi }: { strapi: Core.Strapi }) => ({
   async performSearch(query: string, page: number, pageSize: number, user: any) {
-    strapi.log.info(`🔍 Performing search for: ${query}`);
+    strapi.log.info(`🔍 Performing fuzzy search for: ${query}`);
 
     // ✅ Retrieve plugin config dynamically
     const config = strapi.config.get('plugin::easy-search') as SearchPluginConfig | undefined;
@@ -41,51 +42,60 @@ const searchService = ({ strapi }: { strapi: Core.Strapi }) => ({
           `🔍 Searching in ${uid} using fields: ${JSON.stringify(validSearchFields)}`
         );
 
-        // ✅ Construct query filters dynamically
-        const searchFilters = validSearchFields.map((field) => ({
-          [field]: { $containsi: query },
+        // ✅ Fetch all records (since Fuzzysort works in-memory)
+        const allEntries = await strapi.db.query(contentType.uid).findMany({
+          where: { publishedAt: { $notNull: true } }, // Only get published records
+          populate: getPopulateFields(contentType), // Ensure nested relations are retrieved
+        });
+
+        // ✅ Convert rich text JSON fields to searchable text
+        const formattedEntries = allEntries.map((entry) => ({
+          ...entry,
+          content:
+            typeof entry.content === 'string' ? entry.content : extractTextFromJSON(entry.content),
         }));
 
-        // ✅ Always filter by `publishedAt` when available
-        const publicationFilter = contentType.attributes.publishedAt
-          ? { publishedAt: { $notNull: true } }
-          : {};
-
-        // ✅ Count total matching results (excluding unpublished)
-        const totalCount = await strapi.db.query(contentType.uid).count({
-          where: { $or: searchFilters, ...publicationFilter },
-        });
-
-        // ✅ Fetch paginated results (excluding unpublished)
-        const entries = await strapi.db.query(contentType.uid).findMany({
-          where: { $or: searchFilters, ...publicationFilter },
-          orderBy: { createdAt: 'desc' }, // ✅ Ensure consistent ordering
+        // ✅ Apply Fuzzysort search in-memory
+        const fuzzyResults = fuzzysort.go(query, formattedEntries, {
+          keys: validSearchFields,
+          threshold: -10000,
           limit: pageSize,
-          offset: (page - 1) * pageSize,
-          populate: getPopulateFields(contentType), // ✅ Dynamic population
         });
 
-        strapi.log.info(`✅ Found ${entries.length} results in ${uid}`);
+        strapi.log.info(`✅ Found ${fuzzyResults.length} fuzzy matches in ${uid}`);
 
         // ✅ Convert UID format for GraphQL compatibility
         const collectionName = uid.split('::')[1].split('.')[0];
 
-        // 🔥 **FIX: Ensure Unique Results Using Set**
-        results[collectionName] = Array.from(
-          new Map(entries.map((item) => [item.id, item])).values()
-        );
-
-        totalResults += totalCount;
+        // 🔥 **Transform results back to normal structure**
+        results[collectionName] = fuzzyResults.map((result) => result.obj);
+        totalResults += fuzzyResults.length;
       } catch (error) {
         strapi.log.error(`❌ Error searching in ${uid}:`, error);
       }
     }
 
-    strapi.log.info('📊 Final Search Results:', JSON.stringify(results, null, 2));
+    strapi.log.info('📊 Final Fuzzy Search Results:', JSON.stringify(results, null, 2));
 
     return { results, total: totalResults };
   },
 });
+
+// ✅ Helper function: Extract text from Strapi rich text JSON
+const extractTextFromJSON = (jsonContent: any): string => {
+  if (!Array.isArray(jsonContent)) return ''; // Ensure it's an array
+
+  return jsonContent
+    .map((block) => {
+      if (block.children) {
+        return block.children
+          .map((child) => (child.text ? child.text : '')) // Extract text
+          .join(' ');
+      }
+      return '';
+    })
+    .join(' '); // Join all extracted text into a single string
+};
 
 // ✅ Function to dynamically retrieve relation fields for population
 const getPopulateFields = (contentType: any): string[] => {
