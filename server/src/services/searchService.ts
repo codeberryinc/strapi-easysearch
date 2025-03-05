@@ -1,16 +1,15 @@
-import type { Core } from '@strapi/strapi';
+import { transliterate } from 'transliteration';
 import fuzzysort from 'fuzzysort';
+import type { Core } from '@strapi/strapi';
 
-// ✅ Define expected plugin config type
 interface SearchPluginConfig {
   contentTypes: { uid: string; searchFields: string[] }[];
 }
 
 const searchService = ({ strapi }: { strapi: Core.Strapi }) => ({
   async performSearch(query: string, page: number, pageSize: number, user: any) {
-    strapi.log.info(`🔍 Performing fuzzy search for: ${query}`);
+    strapi.log.info(`🔍 Performing transliterated fuzzy search for: ${query}`);
 
-    // ✅ Retrieve plugin config dynamically
     const config = strapi.config.get('plugin::easy-search') as SearchPluginConfig | undefined;
     if (!config || !config.contentTypes || config.contentTypes.length === 0) {
       strapi.log.warn('⚠️ No content types configured for EasySearch.');
@@ -19,6 +18,10 @@ const searchService = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     const results: Record<string, any[]> = {};
     let totalResults = 0;
+
+    // ✅ Transliterate the search query
+    const transliteratedQuery = transliterate(query);
+    strapi.log.info(`🔠 Transliterated search query: ${transliteratedQuery}`);
 
     for (const { uid, searchFields } of config.contentTypes) {
       try {
@@ -30,7 +33,6 @@ const searchService = ({ strapi }: { strapi: Core.Strapi }) => ({
 
         strapi.log.info(`📂 Searching in content type: ${uid}`);
 
-        // ✅ Validate fields exist in schema
         const availableFields = Object.keys(contentType.attributes);
         const validSearchFields = searchFields.filter((field) => availableFields.includes(field));
         if (validSearchFields.length === 0) {
@@ -42,10 +44,9 @@ const searchService = ({ strapi }: { strapi: Core.Strapi }) => ({
           `🔍 Searching in ${uid} using fields: ${JSON.stringify(validSearchFields)}`
         );
 
-        // ✅ Fetch all records (since Fuzzysort works in-memory)
         const allEntries = await strapi.db.query(contentType.uid).findMany({
-          where: { publishedAt: { $notNull: true } }, // Only get published records
-          populate: getPopulateFields(contentType), // Ensure nested relations are retrieved
+          where: { publishedAt: { $notNull: true } },
+          populate: getPopulateFields(contentType),
         });
 
         // ✅ Convert rich text JSON fields to searchable text
@@ -53,21 +54,19 @@ const searchService = ({ strapi }: { strapi: Core.Strapi }) => ({
           ...entry,
           content:
             typeof entry.content === 'string' ? entry.content : extractTextFromJSON(entry.content),
+          transliterated: transliterate(entry.title + ' ' + extractTextFromJSON(entry.content)), // ✅ Transliterated version of data
         }));
 
-        // ✅ Apply Fuzzysort search in-memory
-        const fuzzyResults = fuzzysort.go(query, formattedEntries, {
-          keys: validSearchFields,
+        // ✅ Search both original & transliterated text
+        const fuzzyResults = fuzzysort.go(transliteratedQuery, formattedEntries, {
+          keys: [...validSearchFields, 'transliterated'], // ✅ Search transliterated text
           threshold: -10000,
           limit: pageSize,
         });
 
         strapi.log.info(`✅ Found ${fuzzyResults.length} fuzzy matches in ${uid}`);
 
-        // ✅ Convert UID format for GraphQL compatibility
         const collectionName = uid.split('::')[1].split('.')[0];
-
-        // 🔥 **Transform results back to normal structure**
         results[collectionName] = fuzzyResults.map((result) => result.obj);
         totalResults += fuzzyResults.length;
       } catch (error) {
@@ -81,23 +80,18 @@ const searchService = ({ strapi }: { strapi: Core.Strapi }) => ({
   },
 });
 
-// ✅ Helper function: Extract text from Strapi rich text JSON
 const extractTextFromJSON = (jsonContent: any): string => {
-  if (!Array.isArray(jsonContent)) return ''; // Ensure it's an array
-
+  if (!Array.isArray(jsonContent)) return '';
   return jsonContent
     .map((block) => {
       if (block.children) {
-        return block.children
-          .map((child) => (child.text ? child.text : '')) // Extract text
-          .join(' ');
+        return block.children.map((child) => (child.text ? child.text : '')).join(' ');
       }
       return '';
     })
-    .join(' '); // Join all extracted text into a single string
+    .join(' ');
 };
 
-// ✅ Function to dynamically retrieve relation fields for population
 const getPopulateFields = (contentType: any): string[] => {
   return Object.keys(contentType.attributes).filter((key) =>
     ['relation', 'component', 'media'].includes(contentType.attributes[key].type)
