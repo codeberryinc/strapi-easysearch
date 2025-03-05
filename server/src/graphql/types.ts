@@ -1,7 +1,6 @@
 import { Core } from '@strapi/strapi';
 
 const getCustomTypes = (strapi: Core.Strapi, nexus: any) => {
-  // ✅ Retrieve plugin config dynamically
   const config = strapi.config.get('plugin::easy-search') as
     | { contentTypes: { uid: string }[] }
     | undefined;
@@ -11,14 +10,12 @@ const getCustomTypes = (strapi: Core.Strapi, nexus: any) => {
     return [];
   }
 
-  // ✅ Generate GraphQL type definitions dynamically
   const searchResultTypes = config.contentTypes.map(({ uid }) => {
     const collectionName = uid.split('::')[1].split('.')[0]; // Convert UID format to GraphQL-friendly name
     return { fieldName: collectionName, gqlType: capitalize(collectionName) };
   });
 
   return [
-    // ✅ Define `PageInfo` for consistent pagination format
     nexus.objectType({
       name: 'PageInfo',
       definition(t) {
@@ -29,7 +26,6 @@ const getCustomTypes = (strapi: Core.Strapi, nexus: any) => {
       },
     }),
 
-    // ✅ Define `SearchResults` dynamically with `pageInfo`
     nexus.objectType({
       name: 'SearchResults',
       definition(t) {
@@ -40,7 +36,6 @@ const getCustomTypes = (strapi: Core.Strapi, nexus: any) => {
       },
     }),
 
-    // ✅ Define `Query.easySearch` dynamically
     nexus.extendType({
       type: 'Query',
       definition(t) {
@@ -66,12 +61,9 @@ const getCustomTypes = (strapi: Core.Strapi, nexus: any) => {
               context
             );
 
-            console.log('🔍 Mapped GraphQL Results:', results);
+            // console.log('🔍 Mapped GraphQL Results:', results);
 
-            // ✅ Ensure pagination metadata is based on unique results
             const pageCount = Math.ceil(total / args.pageSize);
-
-            // ✅ Map the dynamic fields correctly
             const formattedResults = searchResultTypes.reduce(
               (acc, { fieldName }) => {
                 acc[fieldName] = results[fieldName] || [];
@@ -96,7 +88,6 @@ const getCustomTypes = (strapi: Core.Strapi, nexus: any) => {
   ];
 };
 
-// ✅ Helper function to capitalize field names for GraphQL
 const capitalize = (str: string): string => str.charAt(0).toUpperCase() + str.slice(1);
 
 export default getCustomTypes;
