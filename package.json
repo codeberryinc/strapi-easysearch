@@ -64,7 +64,7 @@
     "displayName": "EasySearch",
     "description": "A Strapi v5 plugin providing transliterated fuzzy search capabilities and advanced filtering logic for both GraphQL and REST APIs."
   },
-  "name": "easy-search",
+  "name": "@codeberry/easysearch",
   "description": "A Strapi v5 plugin providing transliterated fuzzy search capabilities and advanced filtering logic for both GraphQL and REST APIs.",
   "license": "MIT",
   "author": "Simeon Iliev <simeon@codeberry.io>"
