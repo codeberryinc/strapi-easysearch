@@ -1,7 +1,7 @@
 import type { Context } from 'koa';
 import type { Core } from '@strapi/strapi';
 
-// ✅ Define the expected plugin config structure
+// Define the expected plugin config structure
 interface SearchPluginConfig {
   contentTypes: { uid: string; searchFields: string[] }[];
 }
@@ -30,12 +30,9 @@ const searchController = ({ strapi }: { strapi: Core.Strapi }) => ({
       ctx.state.user
     );
 
-    // console.log('REST RESPONSE:', results.article?.[0]?.featuredMedia, total);
-
-    // ✅ Format the REST response dynamically
+    // Format the REST response dynamically
     const formattedResults = Object.keys(results).reduce(
       (acc, key) => {
-        // ✅ Convert the key to the full UID format (e.g., "article" -> "api::article.article")
         const uid = `api::${key}.${key}`;
         const contentType = config.contentTypes.find((ct) => ct.uid === uid);
         if (!contentType) return acc;
@@ -43,7 +40,6 @@ const searchController = ({ strapi }: { strapi: Core.Strapi }) => ({
         acc[key] = results[key].map((entry: any) => {
           const response: Record<string, any> = { documentId: entry.documentId };
 
-          // ✅ Include only the specified fields (if provided)
           if (fields) {
             const selectedFields = (fields as string).split(',');
             selectedFields.forEach((field) => {
@@ -52,7 +48,6 @@ const searchController = ({ strapi }: { strapi: Core.Strapi }) => ({
               }
             });
           } else {
-            // ✅ Include all searchFields if no specific fields are requested
             contentType.searchFields.forEach((field) => {
               if (entry[field] !== undefined) {
                 response[field] = entry[field];
@@ -60,13 +55,11 @@ const searchController = ({ strapi }: { strapi: Core.Strapi }) => ({
             });
           }
 
-          // ✅ Handle nested population (components like `featuredMedia`)
           if (populate) {
             const populateFields = (populate as string).split(',');
 
             populateFields.forEach((field) => {
               if (entry[field] !== undefined) {
-                // ✅ If it's `featuredMedia`, extract `image` properly
                 if (field === 'featuredMedia' && entry[field]?.image) {
                   response[field] = {
                     image: {
@@ -90,15 +83,19 @@ const searchController = ({ strapi }: { strapi: Core.Strapi }) => ({
       {} as Record<string, any>
     );
 
-    // ✅ Return the response
+    // Correct Strapi-compatible Pagination
+    const pageCount = Math.ceil(total / Number(pageSize));
+
+    // Return the response matching Strapi's default pagination structure
     ctx.send({
-      data: {
-        results: formattedResults,
-        total,
-      },
+      data: formattedResults,
       meta: {
-        page: parseInt(page as string),
-        pageSize: parseInt(pageSize as string),
+        pagination: {
+          page: Number(page),
+          pageSize: Number(pageSize),
+          pageCount,
+          total,
+        },
       },
     });
   },

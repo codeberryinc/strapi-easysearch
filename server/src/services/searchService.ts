@@ -9,10 +9,6 @@ interface SearchPluginConfig {
 
 const searchService = ({ strapi }: { strapi: Core.Strapi }) => ({
   async performSearch(query: string, page: number, pageSize: number, user: any) {
-    strapi.log.info(
-      `🔍 Performing transliterated fuzzy search for: "${query}" (Page: ${page}, PageSize: ${pageSize})`
-    );
-
     const config = strapi.config.get('plugin::easy-search') as SearchPluginConfig | undefined;
     if (!config || !config.contentTypes || config.contentTypes.length === 0) {
       strapi.log.warn('⚠️ No content types configured for EasySearch.');
@@ -24,7 +20,6 @@ const searchService = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     // ✅ Transliterate the query for fuzzy searching
     const transliteratedQuery = transliterate(query);
-    strapi.log.info(`🔠 Transliterated search query: "${transliteratedQuery}"`);
 
     for (const { uid, searchFields } of config.contentTypes) {
       try {
@@ -34,8 +29,6 @@ const searchService = ({ strapi }: { strapi: Core.Strapi }) => ({
           continue;
         }
 
-        strapi.log.info(`📂 Searching in: ${uid}`);
-
         // ✅ Get valid search fields from schema
         const availableFields = Object.keys(contentType.attributes);
         const validSearchFields = searchFields.filter((field) => availableFields.includes(field));
@@ -43,8 +36,6 @@ const searchService = ({ strapi }: { strapi: Core.Strapi }) => ({
           strapi.log.warn(`⚠️ No valid search fields found for ${uid}. Skipping.`);
           continue;
         }
-
-        strapi.log.info(`🔍 Using fields: ${JSON.stringify(validSearchFields)}`);
 
         // ✅ Fetch all published entries with explicit deep population
         const allEntries = await strapi.db.query(contentType.uid).findMany({
@@ -59,7 +50,6 @@ const searchService = ({ strapi }: { strapi: Core.Strapi }) => ({
           // ✅ Iterate over the entry fields and process rich text fields
           Object.keys(entry).forEach((field) => {
             const attribute = contentType.attributes[field];
-            console.log('THE ATTRIBUTES IS:', attribute);
 
             // ✅ Convert only `richtext` or `text` fields (Markdown is usually `text`)
             if (attribute?.type === 'blocks' || attribute?.type === 'text') {
@@ -87,19 +77,13 @@ const searchService = ({ strapi }: { strapi: Core.Strapi }) => ({
           .slice((page - 1) * pageSize, page * pageSize)
           .map((r) => r.obj);
 
-        strapi.log.info(
-          `✅ Found ${fuzzyResults.length} total matches in ${uid}. Showing ${paginatedResults.length} for page ${page}.`
-        );
-
         const collectionName = uid.split('::')[1].split('.')[0];
         results[collectionName] = paginatedResults;
-        totalResults += fuzzyResults.length; // ✅ Ensure total count includes **all matches**
+        totalResults += fuzzyResults.length; // Ensure total count includes **all matches**
       } catch (error) {
         strapi.log.error(`❌ Error searching in ${uid}:`, error);
       }
     }
-
-    strapi.log.info('📊 Final Fuzzy Search Results:', JSON.stringify(results, null, 2));
 
     return { results, total: totalResults }; // ✅ Ensure total count is from **all** matches
   },
@@ -121,7 +105,7 @@ const extractTextFromJSON = (jsonContent: any): string => {
 };
 
 /**
- * ✅ Dynamically populates all relations, components, and media fields
+ * Dynamically populates all relations, components, and media fields
  */
 const getDeepPopulateFields = (contentType: any): Record<string, any> => {
   const populate: Record<string, any> = {};
@@ -130,10 +114,10 @@ const getDeepPopulateFields = (contentType: any): Record<string, any> => {
     const attribute = contentType.attributes[key];
 
     if (attribute.type === 'relation' || attribute.type === 'component') {
-      // ✅ Recursively populate relations & components
+      // Recursively populate relations & components
       populate[key] = { populate: true };
     } else if (attribute.type === 'media') {
-      // ✅ Dynamically detect media fields (image, video, etc.)
+      // Dynamically detect media fields (image, video, etc.)
       populate[key] = {
         populate: detectNestedMediaFields(attribute),
       };
@@ -144,14 +128,14 @@ const getDeepPopulateFields = (contentType: any): Record<string, any> => {
 };
 
 /**
- * ✅ Detects and returns all nested media attributes dynamically
+ * Detects and returns all nested media attributes dynamically
  */
 const detectNestedMediaFields = (mediaAttribute: any): Record<string, any> => {
-  if (!mediaAttribute || !mediaAttribute.allowedTypes) return {}; // ✅ Return empty object for full population
+  if (!mediaAttribute || !mediaAttribute.allowedTypes) return {}; // Return empty object for full population
 
   const nestedFields: Record<string, any> = {};
   mediaAttribute.allowedTypes.forEach((type: string) => {
-    nestedFields[type] = true; // ✅ Populate all nested media types dynamically
+    nestedFields[type] = true; // Populate all nested media types dynamically
   });
 
   return nestedFields;
