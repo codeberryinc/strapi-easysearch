@@ -5,7 +5,7 @@ A Strapi v5 plugin providing transliterated fuzzy search capabilities and advanc
 
 ![Strapi Version](https://img.shields.io/badge/Strapi-v5.10.3+-purple?style=flat-square)  
 ![License](https://img.shields.io/github/license/codeberryinc/strapi-tagger?style=flat-square)
-![NPM Version](https://img.shields.io/npm/v/@codeberry/tagger?style=flat-square)
+![NPM Version](https://img.shields.io/npm/v/@codeberry/easysearch?style=flat-square)
 ## 🚀 Features
 
 - **Transliterated fuzzy search**: Supports searches in multiple languages.
