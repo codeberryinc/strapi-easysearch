@@ -1,7 +1,28 @@
 {
-  "version": "0.0.0",
-  "keywords": [],
+  "version": "1.0.0",
+  "keywords": [
+    "strapi",
+    "strapi-plugin",
+    "strapi-search",
+    "easy-search",
+    "fuzzy-search",
+    "transliteration",
+    "search",
+    "graphql",
+    "rest-api",
+    "strapi-plugin-search",
+    "fuzzy",
+    "transliteration",
+    "subscription",
+    "middleware",
+    "content-filtering",
+    "cms"
+  ],
   "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codeberryinc/strapi-easysearch.git"
+  },
   "exports": {
     "./package.json": "./package.json",
     "./strapi-server": {
@@ -41,10 +62,10 @@
     "kind": "plugin",
     "name": "easy-search",
     "displayName": "EasySearch",
-    "description": "Easy search for Strapi"
+    "description": "A Strapi v5 plugin providing transliterated fuzzy search capabilities and advanced filtering logic for both GraphQL and REST APIs."
   },
   "name": "easy-search",
-  "description": "Easy search for Strapi",
+  "description": "A Strapi v5 plugin providing transliterated fuzzy search capabilities and advanced filtering logic for both GraphQL and REST APIs.",
   "license": "MIT",
   "author": "Simeon Iliev <simeon@codeberry.io>"
 }
