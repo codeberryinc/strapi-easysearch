@@ -3,7 +3,16 @@ import type { Core } from '@strapi/strapi';
 
 // Define the expected plugin config structure
 interface SearchPluginConfig {
-  contentTypes: { uid: string; searchFields: string[] }[];
+  contentTypes: {
+    uid: string;
+    transliterate: boolean;
+    fuzzysortOptions: {
+      characterLimit: number;
+      threshold: number;
+      limit: number;
+      keys: { name: string; weight: number }[];
+    };
+  }[];
 }
 
 const searchController = ({ strapi }: { strapi: Core.Strapi }) => ({
@@ -15,7 +24,7 @@ const searchController = ({ strapi }: { strapi: Core.Strapi }) => ({
       return ctx.badRequest('Query parameter is required.');
     }
 
-    // Retrieve the plugin config
+    // Retrieve plugin config dynamically
     const config = strapi.config.get('plugin::easy-search') as SearchPluginConfig;
     if (!config || !config.contentTypes || config.contentTypes.length === 0) {
       return ctx.notFound('No content types configured for EasySearch.');
@@ -31,57 +40,67 @@ const searchController = ({ strapi }: { strapi: Core.Strapi }) => ({
     );
 
     // Format the REST response dynamically
-    const formattedResults = Object.keys(results).reduce(
-      (acc, key) => {
+    const formattedResults = await Promise.all(
+      Object.keys(results).map(async (key) => {
         const uid = `api::${key}.${key}`;
-        const contentType = config.contentTypes.find((ct) => ct.uid === uid);
-        if (!contentType) return acc;
+        const contentType = strapi.contentTypes[uid];
+        if (!contentType) return { [key]: [] };
 
-        acc[key] = results[key].map((entry: any) => {
-          const response: Record<string, any> = { documentId: entry.documentId };
+        const populatedEntries = await Promise.all(
+          results[key].map(async (entry: any) => {
+            const response: Record<string, any> = { id: entry.id };
 
-          if (fields) {
-            const selectedFields = (fields as string).split(',');
-            selectedFields.forEach((field) => {
-              if (entry[field] !== undefined) {
-                response[field] = entry[field];
-              }
-            });
-          } else {
-            contentType.searchFields.forEach((field) => {
-              if (entry[field] !== undefined) {
-                response[field] = entry[field];
-              }
-            });
-          }
-
-          if (populate) {
-            const populateFields = (populate as string).split(',');
-
-            populateFields.forEach((field) => {
-              if (entry[field] !== undefined) {
-                if (field === 'featuredMedia' && entry[field]?.image) {
-                  response[field] = {
-                    image: {
-                      url: entry[field].image.url,
-                      formats: entry[field].image.formats || null,
-                    },
-                    video: entry[field]?.video || null,
-                  };
-                } else {
+            // Dynamically include requested fields
+            if (fields) {
+              const selectedFields = (fields as string).split(',');
+              selectedFields.forEach((field) => {
+                if (entry[field] !== undefined) {
                   response[field] = entry[field];
                 }
-              }
-            });
-          }
+              });
+            } else {
+              // Include all attributes dynamically if no `fields` parameter
+              Object.keys(contentType.attributes).forEach((field) => {
+                if (entry[field] !== undefined) {
+                  response[field] = entry[field];
+                }
+              });
+            }
 
-          return response;
-        });
+            // Dynamically populate relations and media
+            if (populate) {
+              const populateParams = parseAdvancedPopulate(populate);
 
-        return acc;
-      },
-      {} as Record<string, any>
-    );
+              const fullEntry = await strapi.db.query(uid).findOne({
+                where: { id: entry.id },
+                populate: populateParams,
+              });
+
+              // Add populated fields to the response dynamically
+              Object.keys(populateParams).forEach((field) => {
+                if (fullEntry && fullEntry[field] !== undefined) {
+                  // Handle specific nested filtering logic for fields like `image.url`
+                  if (field === 'featuredMedia' && fullEntry[field]) {
+                    response[field] = {
+                      ...fullEntry[field],
+                      image: fullEntry[field].image
+                        ? { url: fullEntry[field].image.url } // Extract only the `url` field
+                        : null,
+                    };
+                  } else {
+                    response[field] = fullEntry[field];
+                  }
+                }
+              });
+            }
+
+            return response;
+          })
+        );
+
+        return { [key]: populatedEntries };
+      })
+    ).then((resultsArray) => Object.assign({}, ...resultsArray));
 
     // Correct Strapi-compatible Pagination
     const pageCount = Math.ceil(total / Number(pageSize));
@@ -100,5 +119,23 @@ const searchController = ({ strapi }: { strapi: Core.Strapi }) => ({
     });
   },
 });
+
+// Dynamic helper to parse complex populate parameters
+const parseAdvancedPopulate = (populate: any): Record<string, any> => {
+  if (typeof populate === 'string') {
+    return populate.split(',').reduce((acc: Record<string, any>, field: string) => {
+      const keys = field.split('[').map((key) => key.replace(']', ''));
+      let currentLevel = acc;
+      keys.forEach((key, index) => {
+        if (!currentLevel[key]) {
+          currentLevel[key] = index === keys.length - 1 ? true : {};
+        }
+        currentLevel = currentLevel[key];
+      });
+      return acc;
+    }, {});
+  }
+  return populate;
+};
 
 export default searchController;

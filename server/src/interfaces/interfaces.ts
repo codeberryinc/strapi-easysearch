@@ -1,16 +1,17 @@
-export interface ContentType {
+export interface SearchPluginConfig {
+  contentTypes: ContentTypeConfig[];
+}
+
+export interface ContentTypeConfig {
   uid: string;
-  modelName: string;
-  attributes: Record<string, any>;
+  transliterate?: boolean;
+  fuzzysortOptions: FuzzysortOptions;
+  populateFields?: string[];
 }
 
-export interface SearchResponseArgs {
-  query: string;
-  locale?: string;
-}
-
-export interface SearchResponseReturnType {
-  query: string;
-  locale?: string;
-  auth: any;
+export interface FuzzysortOptions {
+  characterLimit?: number;
+  threshold?: number;
+  limit?: number;
+  keys: { name: string; weight?: number }[];
 }
